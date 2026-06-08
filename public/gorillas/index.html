@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🐾 Capybara Gorillas 2026</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/gorillas/css/style.css">
+</head>
+<body>
+
+  <!-- MENU -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-bg">
+      <canvas id="menu-canvas"></canvas>
+    </div>
+    <div class="menu-container">
+      <div class="logo">
+        <div class="logo-icon">🐾</div>
+        <h1>Capybara<span>Gorillas</span></h1>
+        <p class="tagline">// NĂUCURI ÎN VIITOR //</p>
+      </div>
+      <div class="menu-card">
+        <input type="text" id="player-name" placeholder="CALLSIGN..." maxlength="16" autocomplete="off">
+        <button id="btn-play" class="btn-neon btn-green">
+          <span>⚡</span> GĂSEȘTE ADVERSAR
+        </button>
+        <div class="divider"><span>SAU</span></div>
+        <p class="ai-label">JOC vs AI</p>
+        <div class="difficulty-row">
+          <button class="btn-diff active" data-diff="easy">🟢 Easy</button>
+          <button class="btn-diff" data-diff="medium">🟡 Medium</button>
+          <button class="btn-diff" data-diff="hard">🔴 Hard</button>
+        </div>
+        <button id="btn-ai" class="btn-neon btn-purple">
+          <span>🤖</span> JOC vs CAPYBOT
+        </button>
+        <button id="btn-leaderboard" class="btn-neon btn-blue">
+          <span>🏆</span> LEADERBOARD
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WAITING -->
+  <div id="screen-waiting" class="screen">
+    <div class="menu-container">
+      <div class="cyber-spinner">🐾</div>
+      <h2 class="neon-text">SCANARE REȚEA...</h2>
+      <p id="waiting-msg">Căutare adversar în matrice</p>
+      <div class="scan-bar"><div class="scan-fill"></div></div>
+      <button id="btn-cancel" class="btn-neon btn-red">✕ ABORT</button>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="screen-game" class="screen">
+    <div id="hud">
+      <div class="hud-player" id="hud-p1">
+        <div class="hud-name" id="name-p1">P1</div>
+        <div class="hud-wins" id="wins-p1">⭐ 0</div>
+        <div class="hud-weapon" id="weapon-p1">🥥 Coconut</div>
+      </div>
+      <div class="hud-center">
+        <div id="hud-wind">💨 calm</div>
+        <div id="hud-round">Round 1</div>
+      </div>
+      <div class="hud-player right" id="hud-p2">
+        <div class="hud-name" id="name-p2">P2</div>
+        <div class="hud-wins" id="wins-p2">⭐ 0</div>
+        <div class="hud-weapon" id="weapon-p2">🥥 Coconut</div>
+      </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controls">
+      <div id="controls-inner">
+        <div class="control-group">
+          <label>UNGHI <span class="val" id="angle-val">45</span>°</label>
+          <input type="range" id="angle" min="1" max="89" value="45" style="touch-action:none">
+        </div>
+        <button id="btn-shoot" class="btn-shoot" disabled>🥥 LANSEAZĂ</button>
+        <div class="control-group">
+          <label>PUTERE <span class="val" id="velocity-val">120</span></label>
+          <input type="range" id="velocity" min="20" max="300" value="120" style="touch-action:none">
+        </div>
+      </div>
+      <div id="turn-indicator">⏳ Aștepți...</div>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div id="screen-leaderboard" class="screen">
+    <div class="menu-container">
+      <h2 class="neon-text">🏆 HALL OF FAME</h2>
+      <div id="leaderboard-list"></div>
+      <button id="btn-back" class="btn-neon btn-blue">← ÎNAPOI</button>
+    </div>
+  </div>
+
+  <!-- ROUND OVER OVERLAY -->
+  <div id="overlay-round" class="overlay hidden">
+    <div class="overlay-box">
+      <div class="overlay-icon" id="overlay-icon">🎉</div>
+      <h2 id="overlay-title">Victorie!</h2>
+      <p id="overlay-msg"></p>
+      <p id="overlay-weapon" class="overlay-upgrade"></p>
+      <div class="overlay-bar"><div class="overlay-fill"></div></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/gorillas/js/audio.js"></script>
+  <script src="/gorillas/js/game.js"></script>
+</body>
+</html>

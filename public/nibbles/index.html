@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🐾 Capybara Nibbles 2026</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    :root {
+      --bg:    #050510;
+      --neon-g:#00ff88;
+      --neon-b:#00cfff;
+      --neon-p:#bf5fff;
+      --neon-r:#ff3366;
+      --neon-y:#ffe600;
+      --text:  #e0e0ff;
+      --dim:   #6677aa;
+    }
+    body { font-family:'Courier New',monospace; background:var(--bg); color:var(--text); height:100dvh; overflow:hidden; user-select:none; }
+
+    .screen { display:none; width:100%; height:100dvh; position:absolute; inset:0; align-items:center; justify-content:center; flex-direction:column; }
+    .screen.active { display:flex; }
+
+    /* MENU */
+    .menu-container { display:flex; flex-direction:column; align-items:center; gap:14px; padding:20px; width:100%; z-index:1; }
+    canvas#menu-bg { position:absolute; inset:0; z-index:0; }
+
+    .logo-icon { font-size:clamp(2.5rem,8vw,4rem); animation:float 3s ease-in-out infinite; }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+    h1 { font-size:clamp(1.8rem,6vw,3rem); font-weight:900; letter-spacing:3px; text-transform:uppercase; text-shadow:0 0 20px var(--neon-p); }
+    h1 span { color:var(--neon-p); }
+    .tagline { color:var(--neon-b); font-size:0.75rem; letter-spacing:4px; opacity:0.8; }
+
+    .menu-card { background:rgba(13,13,26,0.92); border:1px solid rgba(191,95,255,0.25); border-radius:12px; padding:24px; width:min(400px,95vw); display:flex; flex-direction:column; gap:12px; }
+
+    input[type="text"] { width:100%; padding:12px 18px; border-radius:6px; border:1px solid rgba(191,95,255,0.3); background:rgba(0,10,30,0.8); color:var(--neon-p); font-family:'Courier New',monospace; font-size:1rem; letter-spacing:2px; text-transform:uppercase; outline:none; text-align:center; }
+    input:focus { border-color:var(--neon-p); box-shadow:0 0 12px rgba(191,95,255,0.3); }
+    input::placeholder { color:rgba(191,95,255,0.3); }
+
+    .btn { width:100%; padding:13px; border-radius:6px; border:1px solid; background:transparent; font-family:'Courier New',monospace; font-size:0.9rem; font-weight:bold; letter-spacing:2px; text-transform:uppercase; cursor:pointer; transition:all 0.2s; }
+    .btn:active { transform:scale(0.97); }
+    .btn-purple { color:var(--neon-p); border-color:var(--neon-p); }
+    .btn-purple:hover { background:rgba(191,95,255,0.1); box-shadow:0 0 20px rgba(191,95,255,0.3); }
+    .btn-green  { color:var(--neon-g); border-color:var(--neon-g); }
+    .btn-green:hover  { background:rgba(0,255,136,0.1); box-shadow:0 0 20px rgba(0,255,136,0.3); }
+    .btn-blue   { color:var(--neon-b); border-color:var(--neon-b); }
+    .btn-blue:hover   { background:rgba(0,207,255,0.1); box-shadow:0 0 20px rgba(0,207,255,0.3); }
+    .btn-red    { color:var(--neon-r); border-color:var(--neon-r); }
+    .btn-red:hover    { background:rgba(255,51,102,0.1); }
+
+    .divider { display:flex; align-items:center; gap:10px; color:var(--dim); font-size:0.7rem; }
+    .divider::before,.divider::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.08); }
+
+    .diff-row { display:flex; gap:8px; }
+    .btn-diff { flex:1; padding:8px 4px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); color:var(--dim); font-family:'Courier New',monospace; font-size:0.75rem; cursor:pointer; transition:all 0.2s; }
+    .btn-diff.active { background:rgba(191,95,255,0.12); border-color:var(--neon-p); color:var(--neon-p); }
+
+    .back-link { color:var(--dim); font-size:0.7rem; letter-spacing:2px; text-decoration:none; margin-top:4px; }
+    .back-link:hover { color:var(--neon-b); }
+
+    /* WAITING */
+    .spinner { font-size:3rem; animation:spin 1.5s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .scan-bar { width:min(280px,80vw); height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; margin-top:8px; }
+    .scan-fill { height:100%; background:var(--neon-p); animation:scan 2s ease-in-out infinite; }
+    @keyframes scan { 0%{width:0;margin-left:0} 50%{width:60%} 100%{width:0;margin-left:100%} }
+
+    /* GAME */
+    #hud { position:absolute; top:0; left:0; right:0; z-index:10; display:flex; justify-content:space-between; align-items:center; padding:8px 14px; background:rgba(5,5,16,0.9); border-bottom:1px solid rgba(191,95,255,0.15); }
+    .hud-p { display:flex; flex-direction:column; gap:2px; font-size:clamp(0.6rem,2vw,0.8rem); min-width:100px; }
+    .hud-p.right { text-align:right; }
+    .hud-name { color:var(--neon-y); font-weight:bold; text-transform:uppercase; letter-spacing:1px; }
+    .hud-score { color:var(--neon-p); }
+    .hud-lives { color:var(--neon-r); }
+    .hud-center { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:clamp(0.6rem,2vw,0.75rem); color:var(--neon-b); letter-spacing:1px; }
+
+    #gameCanvas { position:absolute; inset:0; width:100%; height:100%; }
+
+    /* MOBILE CONTROLS */
+    #mobile-controls {
+      position:absolute; bottom:12px; left:50%;
+      transform:translateX(-50%); z-index:10;
+      display:none;
+      grid-template-columns:repeat(3,64px);
+      grid-template-rows:repeat(3,64px);
+      gap:5px;
+    }
+    @media (max-width:900px), (pointer:coarse) {
+      #mobile-controls { display:grid; }
+      #gameCanvas { height: calc(100dvh - 52px - 220px) !important; top: 52px !important; }
+    }
+    .dpad-btn {
+      width:64px; height:64px; border-radius:10px;
+      border:1px solid rgba(191,95,255,0.5);
+      background:rgba(191,95,255,0.15);
+      color:var(--neon-p); font-size:1.6rem; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      -webkit-tap-highlight-color:transparent;
+      touch-action:manipulation;
+    }
+    .dpad-btn:active { background:rgba(191,95,255,0.4); transform:scale(0.93); }
+
+    /* OVERLAY */
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+    .overlay.hidden { display:none; }
+    .overlay-box { background:#0d0d1a; border:1px solid var(--neon-p); border-radius:12px; padding:32px 40px; text-align:center; animation:popIn 0.3s cubic-bezier(.175,.885,.32,1.275); min-width:260px; }
+    @keyframes popIn { from{transform:scale(0.6);opacity:0} to{transform:scale(1);opacity:1} }
+    .overlay-box h2 { color:var(--neon-p); font-size:1.5rem; letter-spacing:2px; margin-bottom:10px; }
+    .overlay-box p  { color:var(--dim); margin:6px 0; }
+    .overlay-bar { width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; margin-top:16px; overflow:hidden; }
+    .overlay-fill { height:100%; background:var(--neon-p); }
+
+    /* LEADERBOARD */
+    #screen-leaderboard .menu-container { justify-content:center; }
+    #lb-list { width:min(460px,92vw); max-height:55vh; overflow-y:auto; margin:10px 0; }
+    .lb-row { display:flex; align-items:center; padding:9px 14px; margin:5px 0; background:rgba(191,95,255,0.04); border:1px solid rgba(191,95,255,0.1); border-radius:6px; font-size:0.85rem; }
+    .lb-rank { color:var(--neon-y); font-weight:bold; width:32px; }
+    .lb-name { flex:1; padding:0 10px; }
+    .lb-score { color:var(--neon-p); font-weight:bold; }
+  </style>
+</head>
+<body>
+
+<!-- MENU -->
+<div id="screen-menu" class="screen active">
+  <canvas id="menu-bg"></canvas>
+  <div class="menu-container">
+    <div class="logo-icon">🐾</div>
+    <h1>Capybara <span>Nibbles</span></h1>
+    <p class="tagline">// MĂNÂNCĂ. CREȘTI. SUPRAVIEȚUIEȘTI //</p>
+    <div class="menu-card">
+      <input type="text" id="player-name" placeholder="CALLSIGN..." maxlength="16" autocomplete="off">
+      <button id="btn-play" class="btn btn-green">⚡ GĂSEȘTE ADVERSAR</button>
+      <div class="divider"><span>SAU</span></div>
+      <p style="font-size:0.7rem;letter-spacing:2px;color:var(--dim);text-align:center">JOC vs AI</p>
+      <div class="diff-row">
+        <button class="btn-diff active" data-diff="easy">🟢 Easy</button>
+        <button class="btn-diff" data-diff="medium">🟡 Medium</button>
+        <button class="btn-diff" data-diff="hard">🔴 Hard</button>
+      </div>
+      <button id="btn-ai" class="btn btn-purple">🤖 JOC vs CAPYBOT</button>
+      <button id="btn-solo" class="btn btn-blue">🎮 SINGLE PLAYER</button>
+      <button id="btn-lb" class="btn btn-blue">🏆 LEADERBOARD</button>
+      <a href="/" class="back-link">← ÎNAPOI LA HUB</a>
+    </div>
+  </div>
+</div>
+
+<!-- WAITING -->
+<div id="screen-waiting" class="screen">
+  <div class="menu-container">
+    <div class="spinner">🐾</div>
+    <h2 style="color:var(--neon-p);letter-spacing:3px">SCANARE REȚEA...</h2>
+    <p style="color:var(--dim)">Căutare adversar</p>
+    <div class="scan-bar"><div class="scan-fill"></div></div>
+    <button id="btn-cancel" class="btn btn-red" style="width:min(300px,80vw);margin-top:16px">✕ ABORT</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div id="hud">
+    <div class="hud-p" id="hud-p1">
+      <span class="hud-name" id="name-p1">P1</span>
+      <span class="hud-score" id="score-p1">⭐ 0</span>
+      <span class="hud-lives" id="lives-p1">❤️❤️❤️</span>
+    </div>
+    <div class="hud-center">
+      <span id="hud-level">LEVEL 1</span>
+      <span id="hud-num">🎯 ---</span>
+    </div>
+    <div class="hud-p right" id="hud-p2">
+      <span class="hud-name" id="name-p2">P2</span>
+      <span class="hud-score" id="score-p2">⭐ 0</span>
+      <span class="hud-lives" id="lives-p2">❤️❤️❤️</span>
+    </div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <div id="mobile-controls">
+    <div></div>
+    <button class="dpad-btn" id="btn-up">▲</button>
+    <div></div>
+    <button class="dpad-btn" id="btn-left">◀</button>
+    <div></div>
+    <button class="dpad-btn" id="btn-right">▶</button>
+    <div></div>
+    <button class="dpad-btn" id="btn-down">▼</button>
+    <div></div>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="screen-leaderboard" class="screen">
+  <div class="menu-container">
+    <h2 style="color:var(--neon-p);letter-spacing:3px">🏆 HALL OF FAME</h2>
+    <div id="lb-list"></div>
+    <button id="btn-back" class="btn btn-blue" style="width:min(300px,80vw)">← ÎNAPOI</button>
+  </div>
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay" class="overlay hidden">
+  <div class="overlay-box">
+    <div id="ov-icon" style="font-size:2.5rem;margin-bottom:8px">💀</div>
+    <h2 id="ov-title">GAME OVER</h2>
+    <p id="ov-score"></p>
+    <p id="ov-msg" style="font-size:0.8rem;margin-top:8px"></p>
+    <div class="overlay-bar"><div class="overlay-fill" id="ov-bar"></div></div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="/nibbles/js/nibbles.js"></script>
+</body>
+</html>
