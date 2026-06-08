@@ -196,9 +196,194 @@ function processShot(roomId, socketId, data) {
   }
 }
 
-// ── NIBBLES multiplayer rooms ──────────────────────────
+// ── NIBBLES server-authoritative ────────────────────────
 const nibblesRooms   = {};
 const nibblesWaiting = { id: null, name: null };
+
+const NCOLS = 40, NROWS = 30;
+const NDIRS = { UP:[0,-1], DOWN:[0,1], LEFT:[-1,0], RIGHT:[1,0] };
+
+function nibblesObstacles(lvl) {
+  const obs = [];
+  const patterns = {
+    2: [{x:0.49,y:0.22,w:0.02,h:0.56},{x:0.22,y:0.49,w:0.56,h:0.02}],
+    3: [{x:0.35,y:0.25,w:0.1,h:0.1},{x:0.55,y:0.25,w:0.1,h:0.1},{x:0.35,y:0.65,w:0.1,h:0.1},{x:0.55,y:0.65,w:0.1,h:0.1}],
+    4: [{x:0.49,y:0.1,w:0.02,h:0.35},{x:0.49,y:0.55,w:0.02,h:0.35}],
+    5: [{x:0.35,y:0.2,w:0.02,h:0.6},{x:0.63,y:0.2,w:0.02,h:0.6},{x:0.35,y:0.49,w:0.3,h:0.02}],
+    6: [{x:0.49,y:0.1,w:0.02,h:0.25},{x:0.49,y:0.65,w:0.02,h:0.25},{x:0.25,y:0.49,w:0.2,h:0.02},{x:0.55,y:0.49,w:0.2,h:0.02}],
+    7: [{x:0.35,y:0.2,w:0.3,h:0.02},{x:0.35,y:0.2,w:0.02,h:0.45},{x:0.63,y:0.2,w:0.02,h:0.45}],
+    8: [{x:0.35,y:0.25,w:0.02,h:0.3},{x:0.35,y:0.55,w:0.15,h:0.02},{x:0.63,y:0.45,w:0.02,h:0.3},{x:0.5,y:0.45,w:0.15,h:0.02}],
+    9: [{x:0.49,y:0.15,w:0.02,h:0.28},{x:0.49,y:0.57,w:0.02,h:0.28},{x:0.25,y:0.35,w:0.22,h:0.02},{x:0.53,y:0.63,w:0.22,h:0.02},{x:0.35,y:0.22,w:0.02,h:0.15},{x:0.63,y:0.63,w:0.02,h:0.15}]
+  };
+  const pat = patterns[Math.min(lvl,9)] || [];
+  pat.forEach(p => {
+    const x1 = Math.floor(p.x*NCOLS), y1 = Math.floor(p.y*NROWS);
+    const x2 = Math.max(1,Math.floor(p.w*NCOLS)), y2 = Math.max(1,Math.floor(p.h*NROWS));
+    for (let cx=x1; cx<x1+x2; cx++)
+      for (let cy=y1; cy<y1+y2; cy++)
+        if (cx>0 && cx<NCOLS-1 && cy>0 && cy<NROWS-1) obs.push({x:cx,y:cy});
+  });
+  return obs;
+}
+
+function nibblesMakeSnake(idx) {
+  const prefX = idx===0 ? Math.floor(NCOLS*0.15) : Math.floor(NCOLS*0.82);
+  const prefY = Math.floor(NROWS/2);
+  const dir   = idx===0 ? 'RIGHT' : 'LEFT';
+  return { idx, body:[{x:prefX,y:prefY}], dir, nextDir:dir, score:0, lives:3, alive:true, growPending:0 };
+}
+
+function nibblesSpawnFood(room) {
+  let x, y, tries=0;
+  do {
+    x = Math.floor(Math.random()*(NCOLS-2))+1;
+    y = Math.floor(Math.random()*(NROWS-2))+1;
+    tries++;
+  } while (tries<200 && (
+    room.obstacles.some(o=>o.x===x&&o.y===y) ||
+    room.snakes.some(s=>s.body.some(b=>b.x===x&&b.y===y))
+  ));
+  room.food = { x, y, num: room.currentFoodNum };
+}
+
+function nibblesAI(snake, room) {
+  const head   = snake.body[0];
+  const target = room.food;
+  if (!target) return;
+  const entries = Object.entries(NDIRS);
+  const rev = {UP:'DOWN',DOWN:'UP',LEFT:'RIGHT',RIGHT:'LEFT'};
+  let bestDir=snake.dir, bestDist=Infinity;
+  entries.forEach(([name,[dx,dy]]) => {
+    if (rev[snake.dir]===name) return;
+    const nx=head.x+dx, ny=head.y+dy;
+    if (nx<0||nx>=NCOLS||ny<0||ny>=NROWS) return;
+    if (room.obstacles.some(o=>o.x===nx&&o.y===ny)) return;
+    if (snake.body.some(b=>b.x===nx&&b.y===ny)) return;
+    const dist=Math.abs(nx-target.x)+Math.abs(ny-target.y);
+    if (dist<bestDist) { bestDist=dist; bestDir=name; }
+  });
+  const errChance={easy:0.35,medium:0.15,hard:0.04};
+  if (Math.random()<(errChance[room.difficulty]||0.15)) {
+    const valid=entries.filter(([name,[dx,dy]])=>{
+      if(rev[snake.dir]===name) return false;
+      const nx=head.x+dx,ny=head.y+dy;
+      return nx>=0&&nx<NCOLS&&ny>=0&&ny<NROWS&&!room.obstacles.some(o=>o.x===nx&&o.y===ny);
+    });
+    if (valid.length) bestDir=valid[Math.floor(Math.random()*valid.length)][0];
+  }
+  snake.nextDir=bestDir;
+}
+
+function nibblesTick(roomId) {
+  const room=nibblesRooms[roomId];
+  if (!room||!room.active) return;
+
+  room.snakes.forEach(snake => {
+    if (!snake.alive) return;
+    if (snake.isAI) nibblesAI(snake, room);
+
+    snake.dir=snake.nextDir;
+    const [dx,dy]=NDIRS[snake.dir];
+    const head=snake.body[0];
+    const nx=head.x+dx, ny=head.y+dy;
+
+    // Wall
+    if (nx<0||nx>=NCOLS||ny<0||ny>=NROWS) { nibblesKill(snake,room,roomId); return; }
+    // Obstacle
+    if (room.obstacles.some(o=>o.x===nx&&o.y===ny)) { nibblesKill(snake,room,roomId); return; }
+    // Self
+    if (snake.body.some(b=>b.x===nx&&b.y===ny)) { nibblesKill(snake,room,roomId); return; }
+    // Other
+    if (room.snakes.find(s=>s!==snake&&s.body.some(b=>b.x===nx&&b.y===ny))) { nibblesKill(snake,room,roomId); return; }
+
+    snake.body.unshift({x:nx,y:ny});
+
+    // Eat
+    if (room.food && nx===room.food.x && ny===room.food.y) {
+      const pts=room.food.num*room.level*10;
+      snake.score+=pts;
+      snake.growPending+=room.food.num;
+
+      if (room.currentFoodNum>=9) {
+        room.currentFoodNum=1;
+        room.active=false;
+        clearInterval(room.gameLoop);
+        io.to(roomId).emit('nibbles_levelComplete', {
+          level: room.level,
+          scores: room.snakes.map(s=>({name:s.isAI?'🤖 Capybot':room.players[s.idx]?.name,score:s.score}))
+        });
+        return;
+      } else {
+        room.currentFoodNum++;
+        nibblesSpawnFood(room);
+      }
+    } else {
+      if (snake.growPending>0) snake.growPending--;
+      else snake.body.pop();
+    }
+  });
+
+  // Trimite state complet
+  io.to(roomId).emit('nibbles_state', {
+    snakes: room.snakes.map(s=>({idx:s.idx,body:s.body,dir:s.dir,score:s.score,lives:s.lives,alive:s.alive,isAI:s.isAI})),
+    food:   room.food,
+    level:  room.level,
+    currentFoodNum: room.currentFoodNum
+  });
+}
+
+function nibblesKill(snake, room, roomId) {
+  snake.alive=false;
+  snake.lives--;
+  io.to(roomId).emit('nibbles_death', { idx:snake.idx, lives:snake.lives });
+
+  if (snake.lives<=0) {
+    const alive=room.snakes.filter(s=>s.lives>0);
+    if (alive.length<=1) {
+      room.active=false;
+      clearInterval(room.gameLoop);
+      const winner=room.snakes.reduce((a,b)=>a.score>b.score?a:b);
+      io.to(roomId).emit('nibbles_gameover', {
+        scores: room.snakes.map(s=>({name:s.isAI?'🤖 Capybot':room.players[s.idx]?.name,score:s.score,lives:s.lives})),
+        winner: winner.isAI?'🤖 Capybot':room.players[winner.idx]?.name
+      });
+    }
+  } else {
+    setTimeout(()=>{
+      if (!nibblesRooms[roomId]) return;
+      const fresh=nibblesMakeSnake(snake.idx);
+      fresh.score=snake.score; fresh.lives=snake.lives; fresh.isAI=snake.isAI;
+      room.snakes[snake.idx]=fresh;
+    }, 1500);
+  }
+}
+
+function nibblesStartRoom(room) {
+  room.level          = 1;
+  room.currentFoodNum = 1;
+  room.obstacles      = nibblesObstacles(1);
+  room.snakes         = room.players.map((_,i)=>nibblesMakeSnake(i));
+  if (room.vsAI) room.snakes[1].isAI=true;
+  room.active         = true;
+  nibblesSpawnFood(room);
+
+  const speeds=[150,130,110,95,80,68,58,50,42,36];
+  room.gameLoop=setInterval(()=>nibblesTick(room.id), speeds[0]);
+  room.gameLoopInterval=speeds[0];
+
+  io.to(room.id).emit('nibbles_start', {
+    roomId:    room.id,
+    players:   room.players,
+    level:     1,
+    numPlayers:room.players.length,
+    vsAI:      room.vsAI||false,
+    difficulty:room.difficulty||'easy',
+    cols:      NCOLS,
+    rows:      NROWS,
+    obstacles: room.obstacles,
+    serverMode:true
+  });
+}
 
 // ── SOCKET ────────────────────────────────────────────
 io.on('connection', (socket) => {
@@ -275,18 +460,15 @@ io.on('connection', (socket) => {
       const room = {
         id: roomId,
         players: [
-          { id: nibblesWaiting.id, name: nibblesWaiting.name, score:0, lives:3, isAI:false },
-          { id: socket.id, name: playerName, score:0, lives:3, isAI:false }
+          { id: nibblesWaiting.id, name: nibblesWaiting.name },
+          { id: socket.id,         name: playerName }
         ],
-        level:1, active:true
+        vsAI: false, difficulty: 'easy'
       };
       nibblesRooms[roomId] = room;
       socket.join(roomId);
       io.sockets.sockets.get(nibblesWaiting.id)?.join(roomId);
-      io.to(roomId).emit('nibbles_start', {
-        roomId, players: room.players.map(p=>({id:p.id,name:p.name})),
-        level:1, numPlayers:2
-      });
+      nibblesStartRoom(room);
       nibblesWaiting.id = null; nibblesWaiting.name = null;
     } else {
       nibblesWaiting.id = socket.id; nibblesWaiting.name = playerName;
@@ -299,29 +481,56 @@ io.on('connection', (socket) => {
     const room = {
       id: roomId,
       players: [
-        { id: socket.id, name: playerName, score:0, lives:3, isAI:false },
-        { id:'AI', name:`🤖 Capybot`, score:0, lives:3, isAI:true }
+        { id: socket.id, name: playerName },
+        { id: 'AI',      name: '🤖 Capybot' }
       ],
-      level:1, active:true, difficulty
+      vsAI: true, difficulty: difficulty || 'easy'
     };
     nibblesRooms[roomId] = room;
     socket.join(roomId);
-    socket.emit('nibbles_start', {
-      roomId, players: room.players.map(p=>({id:p.id,name:p.name})),
-      level:1, numPlayers:2, vsAI:true, difficulty
+    nibblesStartRoom(room);
+  });
+
+  socket.on('nibbles_dir', (data) => {
+    const room = nibblesRooms[data.roomId];
+    if (!room) return;
+    const myIdx = room.players.findIndex(p => p.id === socket.id);
+    if (myIdx < 0) return;
+    const snake = room.snakes[myIdx];
+    if (!snake || !snake.alive) return;
+    const rev = {UP:'DOWN',DOWN:'UP',LEFT:'RIGHT',RIGHT:'LEFT'};
+    if (rev[snake.dir] !== data.dir) snake.nextDir = data.dir;
+  });
+
+  socket.on('nibbles_nextLevel', (data) => {
+    const room = nibblesRooms[data.roomId];
+    if (!room) return;
+    room.level++;
+    room.currentFoodNum = 1;
+    room.obstacles = nibblesObstacles(room.level);
+    room.snakes.forEach((s,i) => {
+      const fresh = nibblesMakeSnake(i);
+      fresh.score = s.score;
+      fresh.lives = s.lives;
+      fresh.isAI  = s.isAI;
+      room.snakes[i] = fresh;
+    });
+    room.active = true;
+    nibblesSpawnFood(room);
+    const speeds=[150,130,110,95,80,68,58,50,42,36];
+    const spd = speeds[Math.min(room.level-1, speeds.length-1)];
+    clearInterval(room.gameLoop);
+    room.gameLoop = setInterval(() => nibblesTick(room.id), spd);
+    io.to(room.id).emit('nibbles_levelStart', {
+      level:     room.level,
+      obstacles: room.obstacles,
+      cols:      NCOLS,
+      rows:      NROWS
     });
   });
 
-  socket.on('nibbles_score', (data) => {
-    const room = nibblesRooms[data.roomId];
-    if (!room) return;
-    const p = room.players.find(pl => pl.id === socket.id);
-    if (p) p.score = data.score;
-    io.to(data.roomId).emit('nibbles_scores', room.players.map(pl=>({name:pl.name,score:pl.score})));
-  });
-
   socket.on('nibbles_saveScore', (data) => {
-    const ex = db.prepare('SELECT id FROM nibbles_scores WHERE player_name=?').get(data.name);
+    const ex = db.prepare('SELECT id,score FROM nibbles_scores WHERE player_name=?').get(data.name);
     if (!ex || ex.score < data.score) {
       if (ex) db.prepare('UPDATE nibbles_scores SET score=?,level=? WHERE player_name=?').run(data.score, data.level, data.name);
       else     db.prepare('INSERT INTO nibbles_scores(player_name,score,level) VALUES(?,?,?)').run(data.name, data.score, data.level);
@@ -339,6 +548,7 @@ io.on('connection', (socket) => {
     }
     for (const rid in nibblesRooms) {
       if (nibblesRooms[rid].players.find(p=>p.id===socket.id)) {
+        clearInterval(nibblesRooms[rid].gameLoop);
         io.to(rid).emit('nibbles_playerLeft', {});
         delete nibblesRooms[rid];
       }

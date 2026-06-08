@@ -60,6 +60,8 @@ let particles = [];
 let frameCount = 0;
 let currentFoodNum = 1;
 let obstacles = [];
+let serverMode = false;
+let serverMode = false;
 
 const SPEED_BY_LEVEL = [150, 130, 110, 95, 80, 68, 58, 50, 42, 36];
 
@@ -716,45 +718,59 @@ function showOverlay(title, score, msg, isWin, cb) {
     var dx = e.changedTouches[0].clientX - sx;
     var dy = e.changedTouches[0].clientY - sy;
     if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
-    var mySnake = snakes[state.myIndex];
-    if (!mySnake || !mySnake.alive) return;
-    var rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
     var dir;
     if (Math.abs(dx) > Math.abs(dy)) {
       dir = dx > 0 ? 'RIGHT' : 'LEFT';
     } else {
       dir = dy > 0 ? 'DOWN' : 'UP';
     }
-    if (rev[mySnake.dir] !== dir) mySnake.nextDir = dir;
+    if (serverMode && state.roomId) {
+      socket.emit('nibbles_dir', { roomId: state.roomId, dir: dir });
+    } else {
+      var mySnake = snakes[state.myIndex];
+      var rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+      if (!mySnake || !mySnake.alive) return;
+      if (rev[mySnake.dir] !== dir) mySnake.nextDir = dir;
+    }
   }, { passive: true });
 })();
 
-document.addEventListener('keydown', e => {
-  const mySnake = snakes[state.myIndex];
-  if (!mySnake || !mySnake.alive) return;
-  const rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
-  const map = {
+document.addEventListener('keydown', function(e) {
+  var mySnake = snakes[state.myIndex];
+  var rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+  var map = {
     ArrowUp:'UP', ArrowDown:'DOWN', ArrowLeft:'LEFT', ArrowRight:'RIGHT',
     w:'UP', s:'DOWN', a:'LEFT', d:'RIGHT',
     W:'UP', S:'DOWN', A:'LEFT', D:'RIGHT'
   };
-  const dir = map[e.key];
-  if (dir && rev[mySnake.dir] !== dir) {
-    mySnake.nextDir = dir;
-    e.preventDefault();
+  var dir = map[e.key];
+  if (!dir) return;
+  e.preventDefault();
+
+  if (serverMode && state.roomId) {
+    // Trimite directia la server
+    socket.emit('nibbles_dir', { roomId: state.roomId, dir: dir });
+  } else {
+    // Local
+    if (!mySnake || !mySnake.alive) return;
+    if (rev[mySnake.dir] !== dir) mySnake.nextDir = dir;
   }
 });
 
 // Mobile D-pad
-['up','down','left','right'].forEach(d => {
-  const btn = document.getElementById('btn-' + d);
+['up','down','left','right'].forEach(function(d) {
+  var btn = document.getElementById('btn-' + d);
   if (!btn) return;
-  btn.addEventListener('click', () => {
-    const mySnake = snakes[state.myIndex];
-    if (!mySnake || !mySnake.alive) return;
-    const dir = d.toUpperCase();
-    const rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
-    if (rev[mySnake.dir] !== dir) mySnake.nextDir = dir;
+  btn.addEventListener('click', function() {
+    var dir = d.toUpperCase();
+    if (serverMode && state.roomId) {
+      socket.emit('nibbles_dir', { roomId: state.roomId, dir: dir });
+    } else {
+      var mySnake = snakes[state.myIndex];
+      var rev = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+      if (!mySnake || !mySnake.alive) return;
+      if (rev[mySnake.dir] !== dir) mySnake.nextDir = dir;
+    }
   });
 });
 
@@ -821,10 +837,99 @@ socket.on('nibbles_start', (data) => {
   state.difficulty = data.difficulty || 'easy';
   state.running    = true;
   state.players    = data.players;
-  state.myIndex    = data.players.findIndex(p => p.id === socket.id);
+  state.myIndex    = data.players.findIndex(function(p) { return p.id === socket.id; });
   if (state.myIndex < 0) state.myIndex = 0;
-  showScreen('game');
-  startNibblesGame(data.numPlayers, data.vsAI, state.difficulty, 1);
+  serverMode = data.serverMode || false;
+
+  if (serverMode) {
+    // Server trimite tot - doar initializam canvas si primim state
+    if (data.cols) { COLS = data.cols; ROWS = data.rows; }
+    if (data.obstacles) obstacles = data.obstacles;
+    if (gameLoop) { clearInterval(gameLoop); gameLoop = null; }
+    showScreen('game');
+    level = 1;
+    currentFoodNum = 1;
+    snakes = [];
+    food   = null;
+    particles = [];
+    updateHUD();
+  } else {
+    showScreen('game');
+    startNibblesGame(data.numPlayers, data.vsAI, state.difficulty, 1);
+  }
+});
+
+// State complet de la server
+socket.on('nibbles_state', function(data) {
+  if (!serverMode) return;
+  // Update snakes din server
+  data.snakes.forEach(function(ss) {
+    if (!snakes[ss.idx]) {
+      snakes[ss.idx] = { idx:ss.idx, body:ss.body, dir:ss.dir, score:ss.score, lives:ss.lives, alive:ss.alive, isAI:ss.isAI, color:['#00ff88','#ff3366'][ss.idx], growPending:0 };
+    } else {
+      snakes[ss.idx].body  = ss.body;
+      snakes[ss.idx].dir   = ss.dir;
+      snakes[ss.idx].score = ss.score;
+      snakes[ss.idx].lives = ss.lives;
+      snakes[ss.idx].alive = ss.alive;
+    }
+  });
+  food           = data.food;
+  level          = data.level;
+  currentFoodNum = data.currentFoodNum;
+  if (food) document.getElementById('hud-num').textContent = '🎯 ' + currentFoodNum + ' / 9';
+  updateHUD();
+  render();
+});
+
+socket.on('nibbles_death', function(data) {
+  if (!serverMode) return;
+  spawnDeathParticles(
+    snakes[data.idx] ? snakes[data.idx].body[0].x : 0,
+    snakes[data.idx] ? snakes[data.idx].body[0].y : 0,
+    ['#00ff88','#ff3366'][data.idx]
+  );
+});
+
+socket.on('nibbles_levelComplete', function(data) {
+  if (!serverMode) return;
+  state.running = false;
+  var mySnake = snakes[state.myIndex];
+  showOverlay(
+    '🎉 LEVEL ' + data.level + ' COMPLET!',
+    'Scor: ' + (mySnake ? mySnake.score : 0),
+    'Pregătește-te pentru Level ' + (data.level+1) + '!',
+    true,
+    function() {
+      socket.emit('nibbles_nextLevel', { roomId: state.roomId });
+    }
+  );
+});
+
+socket.on('nibbles_levelStart', function(data) {
+  if (!serverMode) return;
+  level     = data.level;
+  obstacles = data.obstacles;
+  snakes    = [];
+  food      = null;
+  particles = [];
+  document.getElementById('hud-level').textContent = 'LEVEL ' + level;
+});
+
+socket.on('nibbles_gameover', function(data) {
+  if (!serverMode) return;
+  state.running = false;
+  var mySnake  = snakes[state.myIndex];
+  var myScore  = mySnake ? mySnake.score : 0;
+  var isWin    = data.winner === state.players[state.myIndex]?.name;
+  socket.emit('nibbles_saveScore', { name: state.players[state.myIndex]?.name, score: myScore, level: level });
+  showOverlay(
+    isWin ? '🏆 VICTORIE!' : '💀 GAME OVER',
+    'Scor: ' + myScore,
+    'Câștigător: ' + data.winner,
+    isWin,
+    function() { showScreen('menu'); }
+  );
 });
 
 socket.on('nibbles_scores', (scores) => {
