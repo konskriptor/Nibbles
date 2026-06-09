@@ -61,7 +61,6 @@ let frameCount = 0;
 let currentFoodNum = 1;
 let obstacles = [];
 let serverMode = false;
-let serverMode = false;
 
 const SPEED_BY_LEVEL = [150, 130, 110, 95, 80, 68, 58, 50, 42, 36];
 
